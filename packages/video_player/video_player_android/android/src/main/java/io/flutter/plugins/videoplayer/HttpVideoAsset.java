@@ -79,8 +79,11 @@ final class HttpVideoAsset extends VideoAsset {
     if (!httpHeaders.isEmpty() && httpHeaders.containsKey(HEADER_USER_AGENT)) {
       userAgent = httpHeaders.get(HEADER_USER_AGENT);
     }
-    unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
-    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
+//    unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
+//    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
+
+    CustomHttpDataSourceFactory customFactory = new CustomHttpDataSourceFactory(userAgent);
+    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, customFactory);
     return new DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory);
   }
 
