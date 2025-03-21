@@ -14,7 +14,6 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import java.util.Map;
@@ -57,10 +56,11 @@ final class HttpVideoAsset extends VideoAsset {
     return builder.build();
   }
 
+  @OptIn(markerClass = UnstableApi.class)
   @NonNull
   @Override
   public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
-    return getMediaSourceFactory(context, new DefaultHttpDataSource.Factory());
+    return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory());
   }
 
   /**
@@ -72,28 +72,28 @@ final class HttpVideoAsset extends VideoAsset {
    * @param initialFactory initial factory, to be configured.
    * @return configured factory, or {@code null} if not needed for this asset type.
    */
+  @OptIn(markerClass = UnstableApi.class)
   @VisibleForTesting
   MediaSource.Factory getMediaSourceFactory(
-      Context context, DefaultHttpDataSource.Factory initialFactory) {
+      Context context, EncryptedHttpDataSource.Factory initialFactory) {
     String userAgent = DEFAULT_USER_AGENT;
     if (!httpHeaders.isEmpty() && httpHeaders.containsKey(HEADER_USER_AGENT)) {
       userAgent = httpHeaders.get(HEADER_USER_AGENT);
     }
-//    unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
-//    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
+    unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
+    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
 
-    CustomHttpDataSourceFactory customFactory = new CustomHttpDataSourceFactory(userAgent);
-    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, customFactory);
     return new DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory);
   }
 
   // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
   @OptIn(markerClass = UnstableApi.class)
-  private static void unstableUpdateDataSourceFactory(
-      @NonNull DefaultHttpDataSource.Factory factory,
+  private void unstableUpdateDataSourceFactory(
+      @NonNull EncryptedHttpDataSource.Factory factory,
       @NonNull Map<String, String> httpHeaders,
       @Nullable String userAgent) {
     factory.setUserAgent(userAgent).setAllowCrossProtocolRedirects(true);
+
     if (!httpHeaders.isEmpty()) {
       factory.setDefaultRequestProperties(httpHeaders);
     }

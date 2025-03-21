@@ -16,7 +16,6 @@ import static org.mockito.Mockito.when;
 
 import android.net.Uri;
 import androidx.media3.common.MediaItem;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.test.core.app.ApplicationProvider;
 import java.util.HashMap;
@@ -53,8 +52,8 @@ public final class VideoAssetTest {
     assertEquals(mediaItem.localConfiguration.uri, Uri.parse("asset:///asset-key"));
   }
 
-  private static DefaultHttpDataSource.Factory mockHttpFactory() {
-    DefaultHttpDataSource.Factory httpFactory = mock(DefaultHttpDataSource.Factory.class);
+  private static EncryptedHttpDataSource.Factory mockHttpFactory() {
+    EncryptedHttpDataSource.Factory httpFactory = mock(EncryptedHttpDataSource.Factory.class);
     when(httpFactory.setUserAgent(anyString())).thenReturn(httpFactory);
     when(httpFactory.setAllowCrossProtocolRedirects(anyBoolean())).thenReturn(httpFactory);
     when(httpFactory.setDefaultRequestProperties(anyMap())).thenReturn(httpFactory);
@@ -67,7 +66,7 @@ public final class VideoAssetTest {
         VideoAsset.fromRemoteUrl(
             "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, new HashMap<>());
 
-    DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
+    EncryptedHttpDataSource.Factory mockFactory = mockHttpFactory();
 
     // Cast to HttpVideoAsset to call a testing-only method to intercept calls.
     ((HttpVideoAsset) asset)
@@ -87,7 +86,7 @@ public final class VideoAssetTest {
         VideoAsset.fromRemoteUrl(
             "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers);
 
-    DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
+    EncryptedHttpDataSource.Factory mockFactory = mockHttpFactory();
 
     // Cast to HttpVideoAsset to call a testing-only method to intercept calls.
     ((HttpVideoAsset) asset)
@@ -125,7 +124,7 @@ public final class VideoAssetTest {
         VideoAsset.fromRemoteUrl(
             "https://flutter.dev/video.mp4", VideoAsset.StreamingFormat.UNKNOWN, headers);
 
-    DefaultHttpDataSource.Factory mockFactory = mockHttpFactory();
+    EncryptedHttpDataSource.Factory mockFactory = mockHttpFactory();
 
     // Cast to HttpVideoAsset to call a testing-only method to intercept calls.
     ((HttpVideoAsset) asset)
