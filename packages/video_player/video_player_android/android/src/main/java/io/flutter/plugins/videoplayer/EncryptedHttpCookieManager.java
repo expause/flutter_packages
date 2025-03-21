@@ -52,6 +52,18 @@ public class EncryptedHttpCookieManager {
         }
     }
 
+    public void clearRequestCookies(String url) {
+        String videoId = extractVideoId(url);
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                videoSessionCookies.remove(videoId);
+            } finally {
+                sessionLock.unlock();
+            }
+        }
+    }
+
     @Nullable
     private static String extractVideoId(@Nullable String url) {
         if (url == null) return null;

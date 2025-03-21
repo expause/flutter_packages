@@ -114,6 +114,11 @@ public abstract class VideoPlayer {
   }
 
   public void dispose() {
+    if (mediaItem.localConfiguration != null) {
+      var uri = mediaItem.localConfiguration.uri;
+      EncryptedHttpCookieManager.getInstance().clearRequestCookies(uri.toString());
+    }
+
     exoPlayer.release();
   }
 }
