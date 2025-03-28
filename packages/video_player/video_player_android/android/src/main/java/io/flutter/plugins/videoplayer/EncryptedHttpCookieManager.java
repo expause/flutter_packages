@@ -65,7 +65,7 @@ public class EncryptedHttpCookieManager {
     }
 
     @Nullable
-    private static String extractVideoId(@Nullable String url) {
+    public static String extractVideoId(@Nullable String url) {
         if (url == null) return null;
         String[] segments = url.split("/");
         return segments.length > 5 ? segments[5] : null;

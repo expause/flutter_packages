@@ -60,7 +60,7 @@ final class HttpVideoAsset extends VideoAsset {
   @NonNull
   @Override
   public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
-    return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory());
+    return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(context));
   }
 
   /**

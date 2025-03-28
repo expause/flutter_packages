@@ -5,6 +5,7 @@ import static androidx.media3.common.util.Util.castNonNull;
 import static androidx.media3.datasource.HttpUtil.buildRangeRequestHeader;
 import static java.lang.Math.min;
 
+import android.content.Context;
 import android.net.Uri;
 
 import androidx.annotation.Nullable;
@@ -38,6 +39,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.NoRouteToHostException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -59,23 +61,31 @@ import java.util.zip.GZIPInputStream;
 @UnstableApi
 public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataSource {
 
-    /** {@link DataSource.Factory} for {@link io.flutter.plugins.videoplayer.EncryptedHttpDataSource} instances. */
+    /**
+     * {@link DataSource.Factory} for {@link io.flutter.plugins.videoplayer.EncryptedHttpDataSource} instances.
+     */
     public static final class Factory implements HttpDataSource.Factory {
 
         private final RequestProperties defaultRequestProperties;
 
         @Nullable
         private TransferListener transferListener;
-        @Nullable private Predicate<String> contentTypePredicate;
-        @Nullable private String userAgent;
+        @Nullable
+        private Predicate<String> contentTypePredicate;
+        @Nullable
+        private String userAgent;
         private int connectTimeoutMs;
         private int readTimeoutMs;
         private boolean allowCrossProtocolRedirects;
         private boolean crossProtocolRedirectsForceOriginal;
         private boolean keepPostFor302Redirects;
+        private Context context;
 
-        /** Creates an instance. */
-        public Factory() {
+        /**
+         * Creates an instance.
+         */
+        public Factory(Context context) {
+            this.context = context;
             defaultRequestProperties = new RequestProperties();
             connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MILLIS;
             readTimeoutMs = DEFAULT_READ_TIMEOUT_MILLIS;
@@ -96,10 +106,10 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * platform to be used.
          *
          * @param userAgent The user agent that will be used, or {@code null} to use the default user
-         *     agent of the underlying platform.
+         *                  agent of the underlying platform.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setUserAgent(@Nullable String userAgent) {
             this.userAgent = userAgent;
@@ -114,7 +124,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * @param connectTimeoutMs The connect timeout, in milliseconds, that will be used.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setConnectTimeoutMs(int connectTimeoutMs) {
             this.connectTimeoutMs = connectTimeoutMs;
@@ -129,7 +139,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * @param readTimeoutMs The connect timeout, in milliseconds, that will be used.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setReadTimeoutMs(int readTimeoutMs) {
             this.readTimeoutMs = readTimeoutMs;
@@ -144,7 +154,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * @param allowCrossProtocolRedirects Whether to allow cross protocol redirects.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setAllowCrossProtocolRedirects(boolean allowCrossProtocolRedirects) {
             this.allowCrossProtocolRedirects = allowCrossProtocolRedirects;
@@ -160,7 +170,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * @param crossProtocolRedirectsForceOriginal Whether to force original protocol.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setCrossProtocolRedirectsForceOriginal(
                 boolean crossProtocolRedirectsForceOriginal) {
@@ -176,10 +186,10 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * <p>The default is {@code null}.
          *
          * @param contentTypePredicate The content type {@link Predicate}, or {@code null} to clear a
-         *     predicate that was previously set.
+         *                             predicate that was previously set.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setContentTypePredicate(@Nullable Predicate<String> contentTypePredicate) {
             this.contentTypePredicate = contentTypePredicate;
@@ -196,7 +206,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * @param transferListener The listener that will be used.
          * @return This factory.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setTransferListener(@Nullable TransferListener transferListener) {
             this.transferListener = transferListener;
@@ -207,7 +217,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
          * Sets whether we should keep the POST method and body when we have HTTP 302 redirects for a
          * POST request.
          */
-        
+
         @UnstableApi
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource.Factory setKeepPostFor302Redirects(boolean keepPostFor302Redirects) {
             this.keepPostFor302Redirects = keepPostFor302Redirects;
@@ -219,6 +229,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource createDataSource() {
             io.flutter.plugins.videoplayer.EncryptedHttpDataSource dataSource =
                     new io.flutter.plugins.videoplayer.EncryptedHttpDataSource(
+                            context,
                             userAgent,
                             connectTimeoutMs,
                             readTimeoutMs,
@@ -234,11 +245,17 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         }
     }
 
-    /** The default connection timeout, in milliseconds. */
-    @UnstableApi public static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 8 * 1000;
+    /**
+     * The default connection timeout, in milliseconds.
+     */
+    @UnstableApi
+    public static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 8 * 1000;
 
-    /** The default read timeout, in milliseconds. */
-    @UnstableApi public static final int DEFAULT_READ_TIMEOUT_MILLIS = 8 * 1000;
+    /**
+     * The default read timeout, in milliseconds.
+     */
+    @UnstableApi
+    public static final int DEFAULT_READ_TIMEOUT_MILLIS = 8 * 1000;
 
     private static final String TAG = "EncryptedHttpDataSource";
     private static final int MAX_REDIRECTS = 20; // Same limit as okhttp.
@@ -250,21 +267,33 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     private final boolean crossProtocolRedirectsForceOriginal;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
-    @Nullable private final String userAgent;
-    @Nullable private final RequestProperties defaultRequestProperties;
+    private Context context;
+    @Nullable
+    private final String userAgent;
+    @Nullable
+    private final RequestProperties defaultRequestProperties;
     private final RequestProperties requestProperties;
-    @Nullable private final Predicate<String> contentTypePredicate;
+    @Nullable
+    private final Predicate<String> contentTypePredicate;
     private final boolean keepPostFor302Redirects;
 
-    @Nullable private DataSpec dataSpec;
-    @Nullable private HttpURLConnection connection;
-    @Nullable private InputStream inputStream;
+    @Nullable
+    private DataSpec dataSpec;
+    @Nullable
+    private HttpURLConnection connection;
+    @Nullable
+    private InputStream inputStream;
     private boolean opened;
     private int responseCode;
     private long bytesToRead;
     private long bytesRead;
+    private byte[] decryptedBuffer;
+    private int decryptedBufferOffset;
+    private int decryptedBufferSize;
+
 
     private EncryptedHttpDataSource(
+            Context context,
             @Nullable String userAgent,
             int connectTimeoutMillis,
             int readTimeoutMillis,
@@ -274,6 +303,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             @Nullable Predicate<String> contentTypePredicate,
             boolean keepPostFor302Redirects) {
         super(/* isNetwork= */ true);
+        this.context = context;
         this.userAgent = userAgent;
         this.connectTimeoutMillis = connectTimeoutMillis;
         this.readTimeoutMillis = readTimeoutMillis;
@@ -341,7 +371,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         requestProperties.clear();
     }
 
-    /** Opens the source to read the specified data. */
+    /**
+     * Opens the source to read the specified data.
+     */
     @UnstableApi
     @Override
     public long open(DataSpec dataSpec) throws HttpDataSourceException {
@@ -501,7 +533,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         }
     }
 
-    /** Establishes a connection, following redirects to do so where permitted. */
+    /**
+     * Establishes a connection, following redirects to do so where permitted.
+     */
     private HttpURLConnection makeConnection(DataSpec dataSpec) throws IOException {
         URL url = new URL(dataSpec.uri.toString());
         @DataSpec.HttpMethod int httpMethod = dataSpec.httpMethod;
@@ -591,13 +625,13 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     /**
      * Configures a connection and opens it.
      *
-     * @param url The url to connect to.
-     * @param httpMethod The http method.
-     * @param httpBody The body data, or {@code null} if not required.
-     * @param position The byte offset of the requested data.
-     * @param length The length of the requested data, or {@link C#LENGTH_UNSET}.
-     * @param allowGzip Whether to allow the use of gzip.
-     * @param followRedirects Whether to follow redirects.
+     * @param url               The url to connect to.
+     * @param httpMethod        The http method.
+     * @param httpBody          The body data, or {@code null} if not required.
+     * @param position          The byte offset of the requested data.
+     * @param length            The length of the requested data, or {@link C#LENGTH_UNSET}.
+     * @param allowGzip         Whether to allow the use of gzip.
+     * @param followRedirects   Whether to follow redirects.
      * @param requestParameters parameters (HTTP headers) to include in request.
      */
     private HttpURLConnection makeConnection(
@@ -663,7 +697,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         return connection;
     }
 
-    /** Creates an {@link HttpURLConnection} that is connected with the {@code url}. */
+    /**
+     * Creates an {@link HttpURLConnection} that is connected with the {@code url}.
+     */
     @VisibleForTesting
     /* package */ HttpURLConnection openConnection(URL url) throws IOException {
         return (HttpURLConnection) url.openConnection();
@@ -673,8 +709,8 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
      * Handles a redirect.
      *
      * @param originalUrl The original URL.
-     * @param location The Location header in the response. May be {@code null}.
-     * @param dataSpec The {@link DataSpec}.
+     * @param location    The Location header in the response. May be {@code null}.
+     * @param dataSpec    The {@link DataSpec}.
      * @return The next URL.
      * @throws HttpDataSourceException If redirection isn't possible.
      */
@@ -738,9 +774,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
      * Attempts to skip the specified number of bytes in full.
      *
      * @param bytesToSkip The number of bytes to skip.
-     * @param dataSpec The {@link DataSpec}.
+     * @param dataSpec    The {@link DataSpec}.
      * @throws IOException If the thread is interrupted during the operation, or if the data ended
-     *     before skipping the specified number of bytes.
+     *                     before skipping the specified number of bytes.
      */
     private void skipFully(long bytesToSkip, DataSpec dataSpec) throws IOException {
         if (bytesToSkip == 0) {
@@ -775,33 +811,51 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
      * <p>This method blocks until at least one byte of data can be read, the end of the opened range
      * is detected, or an exception is thrown.
      *
-     * @param buffer The buffer into which the read data should be stored.
-     * @param offset The start offset into {@code buffer} at which data should be written.
+     * @param buffer     The buffer into which the read data should be stored.
+     * @param offset     The start offset into {@code buffer} at which data should be written.
      * @param readLength The maximum number of bytes to read.
      * @return The number of bytes read, or {@link C#RESULT_END_OF_INPUT} if the end of the opened
-     *     range is reached.
+     * range is reached.
      * @throws IOException If an error occurs reading from the source.
      */
     private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
         if (readLength == 0) {
             return 0;
         }
-        if (bytesToRead != C.LENGTH_UNSET) {
-            long bytesRemaining = bytesToRead - bytesRead;
-            if (bytesRemaining == 0) {
-                return C.RESULT_END_OF_INPUT;
+
+        if (dataSpec != null) {
+            String videoId = EncryptedHttpCookieManager.extractVideoId(dataSpec.uri.toString());
+
+            // If the decrypted buffer is empty, read and decrypt more data
+            if (decryptedBuffer == null || decryptedBufferOffset >= decryptedBufferSize) {
+                byte[] encryptedData = new byte[readLength];
+                int bytesRead = castNonNull(inputStream).read(encryptedData, 0, readLength);
+                if (bytesRead == -1) {
+                    return C.RESULT_END_OF_INPUT;
+                }
+
+                try {
+                    decryptedBuffer = SecureStorageService.getInstance(context).decryptData(videoId,
+                            Arrays.copyOf(encryptedData, bytesRead));
+                    decryptedBufferOffset = 0;
+                    decryptedBufferSize = decryptedBuffer.length;
+                } catch (Exception e) {
+                    throw new IOException("Error decrypting video segment", e);
+                }
             }
-            readLength = (int) min(readLength, bytesRemaining);
+
+            // Copy decrypted data to buffer
+            int bytesToCopy = Math.min(decryptedBufferSize - decryptedBufferOffset, readLength);
+            System.arraycopy(decryptedBuffer, decryptedBufferOffset, buffer, offset, bytesToCopy);
+            decryptedBufferOffset += bytesToCopy;
+
+            bytesRead += bytesToCopy;
+            bytesTransferred(bytesToCopy);
+
+            return bytesToCopy;
         }
 
-        int read = castNonNull(inputStream).read(buffer, offset, readLength);
-        if (read == -1) {
-            return C.RESULT_END_OF_INPUT;
-        }
-
-        bytesRead += read;
-        bytesTransferred(read);
-        return read;
+        return C.RESULT_END_OF_INPUT;
     }
 
     /**
@@ -811,9 +865,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
      * unexpected end of input, working around this issue. On other platform API levels, the method
      * does nothing.
      *
-     * @param connection The connection whose {@link InputStream} should be terminated.
+     * @param connection     The connection whose {@link InputStream} should be terminated.
      * @param bytesRemaining The number of bytes remaining to be read from the input stream if its
-     *     length is known. {@link C#LENGTH_UNSET} otherwise.
+     *                       length is known. {@link C#LENGTH_UNSET} otherwise.
      */
     private static void maybeTerminateInputStream(
             @Nullable HttpURLConnection connection, long bytesRemaining) {
@@ -850,7 +904,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         }
     }
 
-    /** Closes the current connection quietly, if there is one. */
+    /**
+     * Closes the current connection quietly, if there is one.
+     */
     private void closeConnectionQuietly() {
         if (connection != null) {
             try {
