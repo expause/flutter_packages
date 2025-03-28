@@ -10,6 +10,7 @@ import android.util.Base64;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -79,7 +80,7 @@ public class SecureStorageService {
     /**
      * Stores and encrypts an AES-128 key securely in Android Keystore.
      */
-    public void storeDecryptionKey(String videoId, String key) {
+    public void storeDecryptionKey(String videoId, byte[] key) {
         try {
             String keystoreAlias = KEYSTORE_ALIAS_PREFIX + videoId;
             KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
@@ -98,6 +99,7 @@ public class SecureStorageService {
 
                 // Check if StrongBox is supported
                 KeyGenerator keyGenerator = KeyGenerator.getInstance("AES", "AndroidKeyStore");
+                // this is throwing an error. Maybe conditions to check if strongbox is enabled are wrongÏ
 //                boolean strongBoxSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
 //                        keyGenerator.getProvider().getName().equals("AndroidKeyStore");
 //
@@ -115,7 +117,7 @@ public class SecureStorageService {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey);
 
             byte[] iv = cipher.getIV();
-            byte[] encryptedKey = cipher.doFinal(Base64.decode(key, Base64.DEFAULT));
+            byte[] encryptedKey = cipher.doFinal(key);
 
             // Store in SharedPreferences
             sharedPreferences.edit()
