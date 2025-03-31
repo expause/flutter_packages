@@ -5,6 +5,7 @@
 package io.flutter.plugins.videoplayer;
 
 import android.content.Context;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
@@ -16,86 +17,91 @@ import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+
 import java.util.Map;
 
 final class HttpVideoAsset extends VideoAsset {
-  private static final String DEFAULT_USER_AGENT = "ExoPlayer";
-  private static final String HEADER_USER_AGENT = "User-Agent";
+    private static final String DEFAULT_USER_AGENT = "ExoPlayer";
+    private static final String HEADER_USER_AGENT = "User-Agent";
 
-  @NonNull private final StreamingFormat streamingFormat;
-  @NonNull private final Map<String, String> httpHeaders;
+    @NonNull
+    private final StreamingFormat streamingFormat;
+    @NonNull
+    private final Map<String, String> httpHeaders;
 
-  HttpVideoAsset(
-      @Nullable String assetUrl,
-      @NonNull StreamingFormat streamingFormat,
-      @NonNull Map<String, String> httpHeaders) {
-    super(assetUrl);
-    this.streamingFormat = streamingFormat;
-    this.httpHeaders = httpHeaders;
-  }
-
-  @NonNull
-  @Override
-  public MediaItem getMediaItem() {
-    MediaItem.Builder builder = new MediaItem.Builder().setUri(assetUrl);
-    String mimeType = null;
-    switch (streamingFormat) {
-      case SMOOTH:
-        mimeType = MimeTypes.APPLICATION_SS;
-        break;
-      case DYNAMIC_ADAPTIVE:
-        mimeType = MimeTypes.APPLICATION_MPD;
-        break;
-      case HTTP_LIVE:
-        mimeType = MimeTypes.APPLICATION_M3U8;
-        break;
+    HttpVideoAsset(
+            @Nullable String assetUrl,
+            @NonNull StreamingFormat streamingFormat,
+            @NonNull Map<String, String> httpHeaders) {
+        super(assetUrl);
+        this.streamingFormat = streamingFormat;
+        this.httpHeaders = httpHeaders;
     }
-    if (mimeType != null) {
-      builder.setMimeType(mimeType);
+
+    @NonNull
+    @Override
+    public MediaItem getMediaItem() {
+        MediaItem.Builder builder = new MediaItem.Builder().setUri(assetUrl);
+        String mimeType = null;
+        switch (streamingFormat) {
+            case SMOOTH:
+                mimeType = MimeTypes.APPLICATION_SS;
+                break;
+            case DYNAMIC_ADAPTIVE:
+                mimeType = MimeTypes.APPLICATION_MPD;
+                break;
+            case HTTP_LIVE:
+                mimeType = MimeTypes.APPLICATION_M3U8;
+                break;
+        }
+        if (mimeType != null) {
+            builder.setMimeType(mimeType);
+        }
+        return builder.build();
     }
-    return builder.build();
-  }
 
-  @OptIn(markerClass = UnstableApi.class)
-  @NonNull
-  @Override
-  public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
-    return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(context));
-  }
-
-  /**
-   * Returns a configured media source factory, starting at the provided factory.
-   *
-   * <p>This method is provided for ease of testing without making real HTTP calls.
-   *
-   * @param context application context.
-   * @param initialFactory initial factory, to be configured.
-   * @return configured factory, or {@code null} if not needed for this asset type.
-   */
-  @OptIn(markerClass = UnstableApi.class)
-  @VisibleForTesting
-  MediaSource.Factory getMediaSourceFactory(
-      Context context, EncryptedHttpDataSource.Factory initialFactory) {
-    String userAgent = DEFAULT_USER_AGENT;
-    if (!httpHeaders.isEmpty() && httpHeaders.containsKey(HEADER_USER_AGENT)) {
-      userAgent = httpHeaders.get(HEADER_USER_AGENT);
+    @OptIn(markerClass = UnstableApi.class)
+    @NonNull
+    @Override
+    public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
+        String videoId = EncryptedHttpCookieManager.getInstance().extractVideoId(assetUrl);
+        @Nullable byte[] key = EncryptedHttpCookieManager.getInstance().getVideEncryptedKey(videoId);
+        return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(key));
     }
-    unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
-    DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
 
-    return new DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory);
-  }
+    /**
+     * Returns a configured media source factory, starting at the provided factory.
+     *
+     * <p>This method is provided for ease of testing without making real HTTP calls.
+     *
+     * @param context        application context.
+     * @param initialFactory initial factory, to be configured.
+     * @return configured factory, or {@code null} if not needed for this asset type.
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    @VisibleForTesting
+    MediaSource.Factory getMediaSourceFactory(
+            Context context, EncryptedHttpDataSource.Factory initialFactory) {
+        String userAgent = DEFAULT_USER_AGENT;
+        if (!httpHeaders.isEmpty() && httpHeaders.containsKey(HEADER_USER_AGENT)) {
+            userAgent = httpHeaders.get(HEADER_USER_AGENT);
+        }
+        unstableUpdateDataSourceFactory(initialFactory, httpHeaders, userAgent);
+        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, initialFactory);
 
-  // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
-  @OptIn(markerClass = UnstableApi.class)
-  private void unstableUpdateDataSourceFactory(
-      @NonNull EncryptedHttpDataSource.Factory factory,
-      @NonNull Map<String, String> httpHeaders,
-      @Nullable String userAgent) {
-    factory.setUserAgent(userAgent).setAllowCrossProtocolRedirects(true);
-
-    if (!httpHeaders.isEmpty()) {
-      factory.setDefaultRequestProperties(httpHeaders);
+        return new DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory);
     }
-  }
+
+    // TODO: Migrate to stable API, see https://github.com/flutter/flutter/issues/147039.
+    @OptIn(markerClass = UnstableApi.class)
+    private void unstableUpdateDataSourceFactory(
+            @NonNull EncryptedHttpDataSource.Factory factory,
+            @NonNull Map<String, String> httpHeaders,
+            @Nullable String userAgent) {
+        factory.setUserAgent(userAgent).setAllowCrossProtocolRedirects(true);
+
+        if (!httpHeaders.isEmpty()) {
+            factory.setDefaultRequestProperties(httpHeaders);
+        }
+    }
 }

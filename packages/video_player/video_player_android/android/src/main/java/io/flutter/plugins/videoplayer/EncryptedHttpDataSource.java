@@ -5,7 +5,6 @@ import static androidx.media3.common.util.Util.castNonNull;
 import static androidx.media3.datasource.HttpUtil.buildRangeRequestHeader;
 import static java.lang.Math.min;
 
-import android.content.Context;
 import android.net.Uri;
 
 import androidx.annotation.Nullable;
@@ -39,13 +38,14 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.NoRouteToHostException;
 import java.net.URL;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
+
+import javax.crypto.Cipher;
 
 /**
  * An {@link HttpDataSource} that uses Android's {@link HttpURLConnection}.
@@ -79,13 +79,14 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         private boolean allowCrossProtocolRedirects;
         private boolean crossProtocolRedirectsForceOriginal;
         private boolean keepPostFor302Redirects;
-        private Context context;
+        @Nullable
+        byte[] secretKey;
 
         /**
          * Creates an instance.
          */
-        public Factory(Context context) {
-            this.context = context;
+        public Factory(@Nullable byte[] secretKey) {
+            this.secretKey = secretKey;
             defaultRequestProperties = new RequestProperties();
             connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MILLIS;
             readTimeoutMs = DEFAULT_READ_TIMEOUT_MILLIS;
@@ -229,7 +230,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         public io.flutter.plugins.videoplayer.EncryptedHttpDataSource createDataSource() {
             io.flutter.plugins.videoplayer.EncryptedHttpDataSource dataSource =
                     new io.flutter.plugins.videoplayer.EncryptedHttpDataSource(
-                            context,
+                            secretKey,
                             userAgent,
                             connectTimeoutMs,
                             readTimeoutMs,
@@ -267,7 +268,6 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     private final boolean crossProtocolRedirectsForceOriginal;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
-    private Context context;
     @Nullable
     private final String userAgent;
     @Nullable
@@ -287,13 +287,13 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     private int responseCode;
     private long bytesToRead;
     private long bytesRead;
-    private byte[] decryptedBuffer;
-    private int decryptedBufferOffset;
-    private int decryptedBufferSize;
-
+    @Nullable
+    private EncryptedAesFlushingCipher cipher;
+    @Nullable
+    byte[] secretKey;
 
     private EncryptedHttpDataSource(
-            Context context,
+            @Nullable byte[] secretKey,
             @Nullable String userAgent,
             int connectTimeoutMillis,
             int readTimeoutMillis,
@@ -303,7 +303,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             @Nullable Predicate<String> contentTypePredicate,
             boolean keepPostFor302Redirects) {
         super(/* isNetwork= */ true);
-        this.context = context;
+        this.secretKey = secretKey;
         this.userAgent = userAgent;
         this.connectTimeoutMillis = connectTimeoutMillis;
         this.readTimeoutMillis = readTimeoutMillis;
@@ -490,6 +490,15 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                     HttpDataSourceException.TYPE_OPEN);
         }
 
+        if (secretKey != null) {
+            cipher =
+                    new EncryptedAesFlushingCipher(
+                            Cipher.DECRYPT_MODE,
+                            secretKey,
+                            dataSpec.key,
+                            dataSpec.uriPositionOffset + dataSpec.position);
+        }
+
         return bytesToRead;
     }
 
@@ -497,7 +506,17 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     @Override
     public int read(byte[] buffer, int offset, int length) throws HttpDataSourceException {
         try {
-            return readInternal(buffer, offset, length);
+            int read = readInternal(buffer, offset, length);
+
+            if (read == C.RESULT_END_OF_INPUT) {
+                return C.RESULT_END_OF_INPUT;
+            }
+
+            if (cipher != null) {
+                castNonNull(cipher).updateInPlace(buffer, offset, read);
+            }
+
+            return read;
         } catch (IOException e) {
             throw HttpDataSourceException.createForIOException(
                     e, castNonNull(dataSpec), HttpDataSourceException.TYPE_READ);
@@ -822,41 +841,24 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         if (readLength == 0) {
             return 0;
         }
-
-        if (dataSpec != null) {
-            String videoId = EncryptedHttpCookieManager.extractVideoId(dataSpec.uri.toString());
-
-            // If the decrypted buffer is empty, read and decrypt more data
-            if (decryptedBuffer == null || decryptedBufferOffset >= decryptedBufferSize) {
-                byte[] encryptedData = new byte[readLength];
-                int bytesRead = castNonNull(inputStream).read(encryptedData, 0, readLength);
-                if (bytesRead == -1) {
-                    return C.RESULT_END_OF_INPUT;
-                }
-
-                try {
-                    decryptedBuffer = SecureStorageService.getInstance(context).decryptData(videoId,
-                            Arrays.copyOf(encryptedData, bytesRead));
-                    decryptedBufferOffset = 0;
-                    decryptedBufferSize = decryptedBuffer.length;
-                } catch (Exception e) {
-                    throw new IOException("Error decrypting video segment", e);
-                }
+        if (bytesToRead != C.LENGTH_UNSET) {
+            long bytesRemaining = bytesToRead - bytesRead;
+            if (bytesRemaining == 0) {
+                return C.RESULT_END_OF_INPUT;
             }
-
-            // Copy decrypted data to buffer
-            int bytesToCopy = Math.min(decryptedBufferSize - decryptedBufferOffset, readLength);
-            System.arraycopy(decryptedBuffer, decryptedBufferOffset, buffer, offset, bytesToCopy);
-            decryptedBufferOffset += bytesToCopy;
-
-            bytesRead += bytesToCopy;
-            bytesTransferred(bytesToCopy);
-
-            return bytesToCopy;
+            readLength = (int) min(readLength, bytesRemaining);
         }
 
-        return C.RESULT_END_OF_INPUT;
+        int read = castNonNull(inputStream).read(buffer, offset, readLength);
+        if (read == -1) {
+            return C.RESULT_END_OF_INPUT;
+        }
+
+        bytesRead += read;
+        bytesTransferred(read);
+        return read;
     }
+
 
     /**
      * On platform API levels 19 and 20, okhttp's implementation of {@link InputStream#close} can
