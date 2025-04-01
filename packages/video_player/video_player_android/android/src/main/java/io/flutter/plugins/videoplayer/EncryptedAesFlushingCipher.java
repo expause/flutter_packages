@@ -4,10 +4,12 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.util.Assertions;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
+
 import java.nio.ByteBuffer;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.ShortBufferException;
@@ -30,22 +32,47 @@ public final class EncryptedAesFlushingCipher {
 
     private int pendingXorBytes;
 
-    public EncryptedAesFlushingCipher(int mode, byte[] secretKey, @Nullable String nonce, long offset) {
-        this(mode, secretKey, getFNV64Hash(nonce), offset);
-    }
+//    public EncryptedAesFlushingCipher(int mode, byte[] secretKey, @Nullable String nonce, long offset) {
+//        this(mode, secretKey, getFNV64Hash(nonce), offset);
+//    }
 
-    public EncryptedAesFlushingCipher(int mode, byte[] secretKey, long nonce, long offset) {
+//    public EncryptedAesFlushingCipher(int mode, byte[] secretKey, long nonce, long offset) {
+//        try {
+//            cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
+//            blockSize = cipher.getBlockSize();
+//            zerosBlock = new byte[blockSize];
+//            flushedBlock = new byte[blockSize];
+//            long counter = offset / blockSize;
+//            int startPadding = (int) (offset % blockSize);
+//            cipher.init(
+//                    mode,
+////                    new SecretKeySpec(secretKey, Util.splitAtFirst(cipher.getAlgorithm(), "/")[0]),
+//                    new SecretKeySpec(secretKey, "AES"),
+//                    new IvParameterSpec(getInitializationVector(nonce, counter)));
+//            if (startPadding != 0) {
+//                updateInPlace(new byte[startPadding], 0, startPadding);
+//            }
+//        } catch (NoSuchAlgorithmException
+//                 | NoSuchPaddingException
+//                 | InvalidKeyException
+//                 | InvalidAlgorithmParameterException e) {
+//            // Should never happen.
+//            throw new RuntimeException(e);
+//        }
+//    }
+
+    public EncryptedAesFlushingCipher(int mode, byte[] secretKey, byte[] iv, long offset) {
         try {
             cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
             blockSize = cipher.getBlockSize();
             zerosBlock = new byte[blockSize];
             flushedBlock = new byte[blockSize];
-            long counter = offset / blockSize;
             int startPadding = (int) (offset % blockSize);
             cipher.init(
                     mode,
-                    new SecretKeySpec(secretKey, Util.splitAtFirst(cipher.getAlgorithm(), "/")[0]),
-                    new IvParameterSpec(getInitializationVector(nonce, counter)));
+                    new SecretKeySpec(secretKey, "AES"),
+                    new IvParameterSpec(iv)
+            );
             if (startPadding != 0) {
                 updateInPlace(new byte[startPadding], 0, startPadding);
             }
@@ -93,7 +120,7 @@ public final class EncryptedAesFlushingCipher {
         outOffset += written;
         pendingXorBytes = blockSize - bytesToFlush;
         written = nonFlushingUpdate(zerosBlock, 0, pendingXorBytes, flushedBlock, 0);
-//        Assertions.checkState(written == blockSize);
+        Assertions.checkState(written == blockSize);
         // The first part of xorBytes contains the flushed data, which we copy out. The remainder
         // contains the bytes that will be needed for manual transformation in a subsequent call.
         for (int i = 0; i < bytesToFlush; i++) {
@@ -103,7 +130,7 @@ public final class EncryptedAesFlushingCipher {
 
     private int nonFlushingUpdate(byte[] in, int inOffset, int length, byte[] out, int outOffset) {
         try {
-            return length < 16 ? length : cipher.update(in, inOffset, length, out, outOffset);
+            return cipher.update(in, inOffset, length, out, outOffset);
         } catch (ShortBufferException e) {
             // Should never happen.
             throw new RuntimeException(e);

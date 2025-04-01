@@ -7,6 +7,7 @@ import static java.lang.Math.min;
 
 import android.net.Uri;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.media3.common.C;
@@ -14,6 +15,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
+import androidx.media3.datasource.AesFlushingCipher;
 import androidx.media3.datasource.BaseDataSource;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DataSourceException;
@@ -481,54 +483,21 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
 
             // Decrypt the stream before returning
             if (secretKey != null) {
-//                Log.d("DEBUG", "Secret Key (Hex): " + bytesToHex(secretKey));
-
-                // Read the IV first (assuming it's at the start of the file)
+                // Create the IV from the first 16 bytes of the input stream
                 byte[] iv = new byte[16];
                 bytesRead = inputStream.read(iv);
                 if (bytesRead != 16) {
-                    throw new IOException("Failed to read IV from manifest.");
+                    throw new IOException("Failed to read IV from the stream.");
                 }
 
-//                Log.d("DEBUG", "IV (Hex): " + bytesToHex(iv));
-
-                // Read the remaining encrypted content
-                byte[] encryptedData = null;
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    encryptedData = inputStream.readAllBytes();
-                }
-
-                // Initialize the cipher
+                // Initialize the Cipher for decryption
                 Cipher cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
                 SecretKeySpec keySpec = new SecretKeySpec(secretKey, "AES");
                 IvParameterSpec ivSpec = new IvParameterSpec(iv);
                 cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
-                // Decrypt using doFinal
-                byte[] decryptedData = cipher.doFinal(encryptedData);
-
-                // Convert to a string and log it for debugging
-                String decryptedManifest = new String(decryptedData, StandardCharsets.UTF_8);
-                Log.d("DECRYPTED_MPD", decryptedManifest);
-
-                // Convert it back into a readable InputStream for ExoPlayer
-                inputStream = new ByteArrayInputStream(decryptedData);
-
-//                // Create the IV from the first 16 bytes of the input stream
-//                byte[] iv = new byte[16];
-//                bytesRead = inputStream.read(iv);
-//                if (bytesRead != 16) {
-//                    throw new IOException("Failed to read IV from the stream.");
-//                }
-//
-//                // Initialize the Cipher for decryption
-//                Cipher cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
-//                SecretKeySpec keySpec = new SecretKeySpec(secretKey, "AES");
-//                IvParameterSpec ivSpec = new IvParameterSpec(iv);
-//                cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-//
-//                // Wrap the input stream with a cipher input stream for decryption
-//                inputStream = new CipherInputStream(inputStream, cipher);
+                // Wrap the input stream with a cipher input stream for decryption
+                inputStream = new CipherInputStream(inputStream, cipher);
             }
         } catch (IOException e) {
             closeConnectionQuietly();
@@ -537,12 +506,8 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                     dataSpec,
                     PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
                     HttpDataSourceException.TYPE_OPEN);
-        } catch (InvalidAlgorithmParameterException
-                 | NoSuchPaddingException
-                 | NoSuchAlgorithmException
-                 | InvalidKeyException
-                 | IllegalBlockSizeException
-                 | BadPaddingException e) {
+        } catch (InvalidAlgorithmParameterException | NoSuchPaddingException |
+                 NoSuchAlgorithmException | InvalidKeyException e) {
             throw new RuntimeException(e);
         }
 
@@ -569,28 +534,64 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
 
     @UnstableApi
     @Override
-    public int read(byte[] buffer, int offset, int length) throws HttpDataSourceException {
+    public int read(@NonNull byte[] buffer, int offset, int length) throws HttpDataSourceException {
         try {
-            int read = readInternal(buffer, offset, length);
-
-            if (read == C.RESULT_END_OF_INPUT) {
-                return C.RESULT_END_OF_INPUT;
-            }
-//
-//            if (cipher != null) {
-//                castNonNull(cipher).updateInPlace(buffer, offset, read);
-//            }
-
-            return read;
+            return readInternal(buffer, offset, length);
         } catch (IOException e) {
+            String message = "____++++++ error while reading URI: ";
+            Log.e("URI", message + dataSpec.uri);
+
             throw HttpDataSourceException.createForIOException(
                     e, castNonNull(dataSpec), HttpDataSourceException.TYPE_READ);
         }
     }
 
+    /**
+     * Reads up to {@code length} bytes of data and stores them into {@code buffer}, starting at index
+     * {@code offset}.
+     *
+     * <p>This method blocks until at least one byte of data can be read, the end of the opened range
+     * is detected, or an exception is thrown.
+     *
+     * @param buffer     The buffer into which the read data should be stored.
+     * @param offset     The start offset into {@code buffer} at which data should be written.
+     * @param readLength The maximum number of bytes to read.
+     * @return The number of bytes read, or {@link C#RESULT_END_OF_INPUT} if the end of the opened
+     * range is reached.
+     * @throws IOException If an error occurs reading from the source.
+     */
+    private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
+//        String tag = "____++++++ reading for URI: ";
+//        Log.d("URI", tag + dataSpec.uri);
+
+        if (readLength == 0) {
+            return 0;
+        }
+        if (bytesToRead != C.LENGTH_UNSET) {
+            long bytesRemaining = bytesToRead - bytesRead;
+            if (bytesRemaining == 0) {
+                return C.RESULT_END_OF_INPUT;
+            }
+            readLength = (int) min(readLength, bytesRemaining);
+        }
+
+        int read = castNonNull(inputStream).read(buffer, offset, readLength);
+        if (read == -1) {
+            return C.RESULT_END_OF_INPUT;
+        }
+
+        bytesRead += read;
+        bytesTransferred(read);
+        return read;
+    }
+
     @UnstableApi
     @Override
     public void close() throws HttpDataSourceException {
+        if (cipher != null) {
+            cipher = null;
+        }
+
         try {
             @Nullable InputStream inputStream = this.inputStream;
             if (inputStream != null) {
@@ -887,46 +888,6 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             bytesTransferred(read);
         }
     }
-
-    /**
-     * Reads up to {@code length} bytes of data and stores them into {@code buffer}, starting at index
-     * {@code offset}.
-     *
-     * <p>This method blocks until at least one byte of data can be read, the end of the opened range
-     * is detected, or an exception is thrown.
-     *
-     * @param buffer     The buffer into which the read data should be stored.
-     * @param offset     The start offset into {@code buffer} at which data should be written.
-     * @param readLength The maximum number of bytes to read.
-     * @return The number of bytes read, or {@link C#RESULT_END_OF_INPUT} if the end of the opened
-     * range is reached.
-     * @throws IOException If an error occurs reading from the source.
-     */
-    private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
-//        String tag = "____++++++ reading for URI: ";
-//        Log.d("URI", tag + dataSpec.uri);
-
-        if (readLength == 0) {
-            return 0;
-        }
-        if (bytesToRead != C.LENGTH_UNSET) {
-            long bytesRemaining = bytesToRead - bytesRead;
-            if (bytesRemaining == 0) {
-                return C.RESULT_END_OF_INPUT;
-            }
-            readLength = (int) min(readLength, bytesRemaining);
-        }
-
-        int read = castNonNull(inputStream).read(buffer, offset, readLength);
-        if (read == -1) {
-            return C.RESULT_END_OF_INPUT;
-        }
-
-        bytesRead += read;
-        bytesTransferred(read);
-        return read;
-    }
-
 
     /**
      * On platform API levels 19 and 20, okhttp's implementation of {@link InputStream#close} can
