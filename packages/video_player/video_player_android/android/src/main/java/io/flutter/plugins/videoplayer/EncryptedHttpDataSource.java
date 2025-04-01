@@ -29,6 +29,8 @@ import com.google.common.collect.Sets;
 import com.google.common.io.ByteStreams;
 import com.google.common.net.HttpHeaders;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -38,6 +40,10 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.NoRouteToHostException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -45,7 +51,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * An {@link HttpDataSource} that uses Android's {@link HttpURLConnection}.
@@ -395,6 +407,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                     e, dataSpec, HttpDataSourceException.TYPE_OPEN);
         }
 
+        String tag = "____++++++ reading for URI: ";
+        Log.d("URI", tag + dataSpec.uri);
+
         // Check for a valid response code.
         if (responseCode < 200 || responseCode > 299) {
             Map<String, List<String>> headers = connection.getHeaderFields();
@@ -463,6 +478,58 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             if (isCompressed) {
                 inputStream = new GZIPInputStream(inputStream);
             }
+
+            // Decrypt the stream before returning
+            if (secretKey != null) {
+//                Log.d("DEBUG", "Secret Key (Hex): " + bytesToHex(secretKey));
+
+                // Read the IV first (assuming it's at the start of the file)
+                byte[] iv = new byte[16];
+                bytesRead = inputStream.read(iv);
+                if (bytesRead != 16) {
+                    throw new IOException("Failed to read IV from manifest.");
+                }
+
+//                Log.d("DEBUG", "IV (Hex): " + bytesToHex(iv));
+
+                // Read the remaining encrypted content
+                byte[] encryptedData = null;
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    encryptedData = inputStream.readAllBytes();
+                }
+
+                // Initialize the cipher
+                Cipher cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
+                SecretKeySpec keySpec = new SecretKeySpec(secretKey, "AES");
+                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+                cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+
+                // Decrypt using doFinal
+                byte[] decryptedData = cipher.doFinal(encryptedData);
+
+                // Convert to a string and log it for debugging
+                String decryptedManifest = new String(decryptedData, StandardCharsets.UTF_8);
+                Log.d("DECRYPTED_MPD", decryptedManifest);
+
+                // Convert it back into a readable InputStream for ExoPlayer
+                inputStream = new ByteArrayInputStream(decryptedData);
+
+//                // Create the IV from the first 16 bytes of the input stream
+//                byte[] iv = new byte[16];
+//                bytesRead = inputStream.read(iv);
+//                if (bytesRead != 16) {
+//                    throw new IOException("Failed to read IV from the stream.");
+//                }
+//
+//                // Initialize the Cipher for decryption
+//                Cipher cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
+//                SecretKeySpec keySpec = new SecretKeySpec(secretKey, "AES");
+//                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+//                cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+//
+//                // Wrap the input stream with a cipher input stream for decryption
+//                inputStream = new CipherInputStream(inputStream, cipher);
+            }
         } catch (IOException e) {
             closeConnectionQuietly();
             throw new HttpDataSourceException(
@@ -470,6 +537,13 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                     dataSpec,
                     PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
                     HttpDataSourceException.TYPE_OPEN);
+        } catch (InvalidAlgorithmParameterException
+                 | NoSuchPaddingException
+                 | NoSuchAlgorithmException
+                 | InvalidKeyException
+                 | IllegalBlockSizeException
+                 | BadPaddingException e) {
+            throw new RuntimeException(e);
         }
 
         opened = true;
@@ -490,15 +564,6 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                     HttpDataSourceException.TYPE_OPEN);
         }
 
-        if (secretKey != null) {
-            cipher =
-                    new EncryptedAesFlushingCipher(
-                            Cipher.DECRYPT_MODE,
-                            secretKey,
-                            dataSpec.key,
-                            dataSpec.uriPositionOffset + dataSpec.position);
-        }
-
         return bytesToRead;
     }
 
@@ -511,10 +576,10 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             if (read == C.RESULT_END_OF_INPUT) {
                 return C.RESULT_END_OF_INPUT;
             }
-
-            if (cipher != null) {
-                castNonNull(cipher).updateInPlace(buffer, offset, read);
-            }
+//
+//            if (cipher != null) {
+//                castNonNull(cipher).updateInPlace(buffer, offset, read);
+//            }
 
             return read;
         } catch (IOException e) {
@@ -838,6 +903,9 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
      * @throws IOException If an error occurs reading from the source.
      */
     private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
+//        String tag = "____++++++ reading for URI: ";
+//        Log.d("URI", tag + dataSpec.uri);
+
         if (readLength == 0) {
             return 0;
         }
