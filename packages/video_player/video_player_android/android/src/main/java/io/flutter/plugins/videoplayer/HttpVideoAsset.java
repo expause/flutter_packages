@@ -64,8 +64,8 @@ final class HttpVideoAsset extends VideoAsset {
     @NonNull
     @Override
     public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
-        String videoId = EncryptedHttpCookieManager.getInstance().extractVideoId(assetUrl);
-        @Nullable byte[] key = EncryptedHttpCookieManager.getInstance().getVideEncryptedKey(videoId);
+        String videoId = EncryptedVideoManager.getInstance().extractVideoId(assetUrl);
+        @Nullable byte[] key = EncryptedVideoManager.getInstance().getVideEncryptedKey(videoId);
         return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(key));
     }
 

@@ -7,20 +7,20 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class EncryptedHttpCookieManager {
+public class EncryptedVideoManager {
     private static final Map<String, String> videoSessionCookies = Collections.synchronizedMap(new HashMap<>());
     private static final Map<String, byte[]> videoEncryptionKeys = Collections.synchronizedMap(new HashMap<>());
     private static final ReentrantLock sessionLock = new ReentrantLock();
 
     // Singleton instance
-    private static final EncryptedHttpCookieManager INSTANCE = new EncryptedHttpCookieManager();
+    private static final EncryptedVideoManager INSTANCE = new EncryptedVideoManager();
 
     // Private constructor to prevent instantiation
-    private EncryptedHttpCookieManager() {
+    private EncryptedVideoManager() {
     }
 
     // Public method to access the singleton instance
-    public static EncryptedHttpCookieManager getInstance() {
+    public static EncryptedVideoManager getInstance() {
         return INSTANCE;
     }
 
@@ -84,10 +84,6 @@ public class EncryptedHttpCookieManager {
         if (videoId != null) {
             sessionLock.lock();
             try {
-
-//                videoEncryptionKeys.put(videoId, shiftKeyLeft(key, 4));
-//                videoEncryptionKeys.put(videoId, fixEndianness(key));
-//                videoEncryptionKeys.put(videoId, reverseFullKey(key));
                 videoEncryptionKeys.put(videoId, key);
             } finally {
                 sessionLock.unlock();
@@ -113,48 +109,5 @@ public class EncryptedHttpCookieManager {
         if (url == null) return null;
         String[] segments = url.split("/");
         return segments.length > 5 ? segments[5] : null;
-    }
-
-    private byte[] reverseBytes(byte[] input) {
-        byte[] reversed = new byte[input.length];
-        for (int i = 0; i < input.length; i++) {
-            reversed[i] = input[input.length - 1 - i];
-        }
-        return reversed;
-    }
-
-//    private static byte[] shiftKey(byte[] input) {
-//        byte[] corrected = new byte[input.length];
-//        for (int i = 0; i < input.length; i++) {
-//            corrected[i] = input[(i + 4) % input.length]; // Adjust based on observed shift
-//        }
-//        return corrected;
-//    }
-
-    private static byte[] shiftKeyLeft(byte[] input, int shift) {
-        byte[] corrected = new byte[input.length];
-        for (int i = 0; i < input.length; i++) {
-            corrected[i] = input[(i + shift) % input.length];
-        }
-        return corrected;
-    }
-
-    private static byte[] fixEndianness(byte[] input) {
-        byte[] output = new byte[input.length];
-        for (int i = 0; i < input.length; i += 4) {
-            output[i] = input[i + 3];
-            output[i + 1] = input[i + 2];
-            output[i + 2] = input[i + 1];
-            output[i + 3] = input[i];
-        }
-        return output;
-    }
-
-    private static byte[] reverseFullKey(byte[] input) {
-        byte[] output = new byte[input.length];
-        for (int i = 0; i < input.length; i++) {
-            output[i] = input[input.length - 1 - i];
-        }
-        return output;
     }
 }

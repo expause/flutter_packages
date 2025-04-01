@@ -665,7 +665,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
                 if (cookieHeaders != null && !cookieHeaders.isEmpty()) {
                     var cookieName = "set-cookie";
                     var cookieValue = cookieHeaders.get(0);
-                    EncryptedHttpCookieManager.getInstance().setRequestCookies(url.toString(), cookieName, cookieValue);
+                    EncryptedVideoManager.getInstance().setRequestCookies(url.toString(), cookieName, cookieValue);
                 }
             }
 
@@ -755,7 +755,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         }
         connection.setRequestProperty(HttpHeaders.ACCEPT_ENCODING, allowGzip ? "gzip" : "identity");
 
-        Map<String, String> cookies = EncryptedHttpCookieManager.getInstance().getRequestCookies(url.toString());
+        Map<String, String> cookies = EncryptedVideoManager.getInstance().getRequestCookies(url.toString());
         if (!cookies.isEmpty()) {
             Iterator<Map.Entry<String, String>> iterator = cookies.entrySet().iterator();
             Map.Entry<String, String> firstEntry = iterator.next(); // Get first entry
