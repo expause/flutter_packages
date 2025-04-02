@@ -54,7 +54,7 @@
     components.scheme = @"customScheme"; // Change scheme to customScheme
     NSURL *customURL = components.URL;
     
-    NSLog(@"Modified URL: %@", customURL.absoluteString); // Debugging output
+    NSLog(@"Modified URL: %@", customURL.absoluteString);
     
     AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:customURL options:options];
     
