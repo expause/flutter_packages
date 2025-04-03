@@ -49,14 +49,20 @@
         options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
     }
     
-    // Modify the URL scheme before passing it to AVURLAsset
-    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-    components.scheme = @"customScheme"; // Change scheme to customScheme
-    NSURL *customURL = components.URL;
+    NSURL *customURLToUse;
     
-    NSLog(@"Modified URL: %@", customURL.absoluteString);
+    if ([url.absoluteString containsString:@"https"]) {
+        // Modify the URL scheme before passing it to AVURLAsset
+        NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+        components.scheme = @"customScheme"; // Change scheme to customScheme
+        customURLToUse = components.URL;
+    } else {
+        customURLToUse = url;
+    }
     
-    AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:customURL options:options];
+    //    NSLog(@"Modified URL: %@", customURL.absoluteString);
+    
+    AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:customURLToUse options:options];
     
     // Attach the custom loader delegate
     self.decryptionDelegate = [[FVPDecryptionLoaderDelegate alloc] init];
