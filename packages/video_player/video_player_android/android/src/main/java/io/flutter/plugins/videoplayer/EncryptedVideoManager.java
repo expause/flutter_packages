@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class EncryptedVideoManager {
+    private static final Map<String, String> videoSessionCookies = Collections.synchronizedMap(new HashMap<>());
     private static final Map<String, byte[]> videoEncryptionKeys = Collections.synchronizedMap(new HashMap<>());
     private static final ReentrantLock sessionLock = new ReentrantLock();
 
@@ -21,6 +22,49 @@ public class EncryptedVideoManager {
     // Public method to access the singleton instance
     public static EncryptedVideoManager getInstance() {
         return INSTANCE;
+    }
+
+    public Map<String, String> getRequestCookies(String url) {
+        Map<String, String> headers = new HashMap<>();
+        String videoId = extractVideoId(url);
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                String sessionCookie = videoSessionCookies.get(videoId);
+                if (sessionCookie != null) {
+                    headers.put("set-cookie", sessionCookie);
+                }
+            } finally {
+                sessionLock.unlock();
+            }
+        }
+        return headers;
+    }
+
+    public void setRequestCookies(String url, String cookieName, String cookieValue) {
+        if ("set-cookie".equalsIgnoreCase(cookieName)) {
+            String videoId = extractVideoId(url);
+            if (videoId != null) {
+                sessionLock.lock();
+                try {
+                    videoSessionCookies.put(videoId, cookieValue);
+                } finally {
+                    sessionLock.unlock();
+                }
+            }
+        }
+    }
+
+    public void clearRequestCookies(String url) {
+        String videoId = extractVideoId(url);
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                videoSessionCookies.remove(videoId);
+            } finally {
+                sessionLock.unlock();
+            }
+        }
     }
     
     public @Nullable byte[] getVideEncryptedKey(String videoId) {
