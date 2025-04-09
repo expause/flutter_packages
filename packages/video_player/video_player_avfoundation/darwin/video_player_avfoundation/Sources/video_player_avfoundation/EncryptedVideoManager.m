@@ -10,6 +10,7 @@
 
 @interface EncryptedVideoManager ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSData *> *videoEncryptionKeys;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSData *> *videoIvKeys;
 @property (nonatomic, strong) NSLock *sessionLock;
 @end
 
@@ -28,6 +29,7 @@
     self = [super init];
     if (self) {
         _videoEncryptionKeys = [[NSMutableDictionary alloc] init];
+        _videoIvKeys = [[NSMutableDictionary alloc] init];
         _sessionLock = [[NSLock alloc] init];
     }
     return self;
@@ -52,9 +54,33 @@
     [self.sessionLock unlock];
 }
 
+- (NSData *)getVideoIvKey:(NSString *)videoId {
+    [self.sessionLock lock];
+    NSData *key = [self.videoIvKeys objectForKey:videoId];
+    [self.sessionLock unlock];
+    return key;
+}
+
+- (void)setVideoIvKey:(NSString *)videoId key:(NSData *)key {
+    [self.sessionLock lock];
+    [self.videoIvKeys setObject:key forKey:videoId];
+    [self.sessionLock unlock];
+}
+
+- (void)removeVideoIvKey:(NSString *)videoId {
+    [self.sessionLock lock];
+    [self.videoIvKeys removeObjectForKey:videoId];
+    [self.sessionLock unlock];
+}
+
 - (NSString *)extractVideoIdFromURL:(NSString *)url {
     NSArray<NSString *> *segments = [url componentsSeparatedByString:@"/"];
     return (segments.count > 5) ? segments[5] : nil;
+}
+
+- (NSString *)extractVideoIdFromHlsScheme:(NSString *)url {
+    NSArray<NSString *> *segments = [url componentsSeparatedByString:@"/"];
+    return (segments.count > 3) ? segments[3] : nil;
 }
 
 @end

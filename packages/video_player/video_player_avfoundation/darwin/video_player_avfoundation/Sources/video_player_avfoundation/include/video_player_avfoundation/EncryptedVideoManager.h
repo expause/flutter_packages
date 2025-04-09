@@ -16,7 +16,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSData *)getVideoDecryptionKey:(NSString *)videoId;
 - (void)setVideoDecryptionKey:(NSString *)videoId key:(NSData *)key;
 - (void)removeVideoDecryptionKey:(NSString *)videoId;
+- (nullable NSData *)getVideoIvKey:(NSString *)videoId;
+- (void)setVideoIvKey:(NSString *)videoId key:(NSData *)key;
+- (void)removeVideoIvKey:(NSString *)videoId;
 - (nullable NSString *)extractVideoIdFromURL:(NSString *)url;
+- (nullable NSString *)extractVideoIdFromHlsScheme:(NSString *)url;
 
 @end
 

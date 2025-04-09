@@ -60,8 +60,6 @@
         customURLToUse = url;
     }
     
-    //    NSLog(@"Modified URL: %@", customURL.absoluteString);
-    
     AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:customURLToUse options:options];
     
     // Attach the custom loader delegate

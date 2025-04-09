@@ -7,26 +7,32 @@
 @implementation FVPDecryptionLoaderDelegate
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest {
-    bool requestsAllDataToEndOfResource = loadingRequest.dataRequest.requestsAllDataToEndOfResource;
-    NSInteger requestedLength = loadingRequest.dataRequest.requestedLength;
-    NSInteger requestedOffset = loadingRequest.dataRequest.requestedOffset;
-    NSLog(@"_______====== requestsAllDataToEndOfResource: %@", requestsAllDataToEndOfResource ? @"YES" : @"NO");
-    NSLog(@"_______====== requestedLength: %ld", (long)requestedLength);
-    NSLog(@"_______====== requestedOffset: %ld", (long)requestedOffset);
-    
     NSURL *customURL = loadingRequest.request.URL;
+    NSLog(@"______________ Requested URL: %@", customURL.absoluteString);
     
     // Modify the URL scheme back to https
     NSURLComponents *components = [NSURLComponents componentsWithURL:customURL resolvingAgainstBaseURL:NO];
     components.scheme = @"https";
-    NSURL *url = components.URL;
+    NSURL *actualUrl = components.URL;
     
-    if (!url) {
+    if (!actualUrl) {
         [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Invalid URL"}]];
         return NO;
     }
     
-    NSString *videoId = [[EncryptedVideoManager sharedInstance] extractVideoIdFromURL:url.absoluteString];
+    bool isKeyDecryptionRequest = [customURL.absoluteURL.absoluteString containsString:@"hlsScheme"];
+    bool isMasterFileRequest = [actualUrl.absoluteURL.absoluteString containsString:@".m3u8"];
+    bool isMasterPlaylistFileRequest = ![actualUrl.absoluteURL.absoluteString containsString:@"master.m3u8"];
+    bool isSegmentRequest = !isKeyDecryptionRequest && !isMasterFileRequest;
+    
+    if (isSegmentRequest) {
+        NSLog(@"______________ Requested video segment. Returning NO");
+        return NO;
+    }
+    
+    NSString *videoId = isKeyDecryptionRequest ?
+    [[EncryptedVideoManager sharedInstance] extractVideoIdFromHlsScheme:actualUrl.absoluteString] :
+    [[EncryptedVideoManager sharedInstance] extractVideoIdFromURL:actualUrl.absoluteString];
     
     if (!videoId) {
         [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Invalid Video ID"}]];
@@ -40,105 +46,73 @@
         return NO;
     }
     
-    NSLog(@"_______====== Attempting synchronous download");
-    NSLog(@"_______====== Requesting for URL: %@", url.absoluteString);
-    
-    // Synchronous download
-    NSData *encryptedData = [NSData dataWithContentsOfURL:url];
-    
-    if (!encryptedData) {
-        NSLog(@"_______====== Failed to download encrypted data");
-        [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Failed to download encrypted data"}]];
-        return NO;
+    if (isKeyDecryptionRequest) {
+        NSLog(@"______________ Requested hls key");
+        // Respond with decryption key
+        if (key) {
+            //            loadingRequest.contentInformationRequest.contentType = AVStreamingKeyDeliveryContentKeyType;
+            loadingRequest.contentInformationRequest.contentType = AVStreamingKeyDeliveryPersistentContentKeyType;
+            loadingRequest.contentInformationRequest.byteRangeAccessSupported = YES;
+            loadingRequest.contentInformationRequest.contentLength = key.length;
+            [loadingRequest.dataRequest respondWithData:key];
+            [loadingRequest finishLoading];
+            return YES;
+        }
     }
     
-    NSLog(@"_______====== Data downloaded successfully, proceeding with decryption");
-    
-    NSData *decryptedData = [self decryptData:encryptedData withKey:key];
-    
-    if (decryptedData) {
-        //         **Check if the request is for the master file (M3U8)**
-//        if ([url.absoluteString containsString:@".m3u8"]) {
-//            NSLog(@"_______====== Master file detected! Printing decrypted content:");
-//            
-//            NSString *m3u8String = [[NSString alloc] initWithData:decryptedData encoding:NSUTF8StringEncoding];
-//            
-//            if (m3u8String) {
-//                NSLog(@"\n_______====== Decrypted Master File:\n%@", m3u8String);
-//            } else {
-//                NSLog(@"_______====== Failed to convert decrypted data to string.");
-//            }
-//        }
+    if (isMasterFileRequest) {
+        NSLog(@"______________ Requested master file");
         
-        //                 **Break decrypted data into chunks for AVPlayer**
-//        NSUInteger length = decryptedData.length;
-//        NSUInteger chunkSize = 64 * 1024; // 64 KB chunks
-//        NSUInteger offset = 0;
-//        
-//        while (offset < length) {
-//            NSUInteger thisChunkSize = MIN(chunkSize, length - offset);
-//            NSData *chunk = [decryptedData subdataWithRange:NSMakeRange(offset, thisChunkSize)];
-//            [loadingRequest.dataRequest respondWithData:chunk];
-//            offset += thisChunkSize;
-//        }
-        
-        // Log first and last n bytes if this is the specific video file
-//        if ([url.absoluteString containsString:@"video1080p_fmp40000000000.m4s"]) {
-//            NSUInteger n = 16; // Adjust as needed
-//            NSUInteger length = decryptedData.length;
-//            
-//            NSData *firstNBytes = (length >= n) ? [decryptedData subdataWithRange:NSMakeRange(0, n)] : decryptedData;
-//            NSData *lastNBytes = (length >= n) ? [decryptedData subdataWithRange:NSMakeRange(length - n, n)] : decryptedData;
-//            
-//            NSLog(@"_______====== First %lu bytes: %@", (unsigned long)n, firstNBytes);
-//            NSLog(@"_______====== Last %lu bytes: %@", (unsigned long)n, lastNBytes);
-//        }
-        
-        
-        // Set content length and type
-        if (loadingRequest.contentInformationRequest) {
-            loadingRequest.contentInformationRequest.contentLength = decryptedData.length;
-            
-            NSString *urlString = url.absoluteString;
-            if ([urlString hasSuffix:@".m3u8"]) {
-                loadingRequest.contentInformationRequest.contentType = @"application/vnd.apple.mpegurl";
-            } else if ([urlString hasSuffix:@".m4s"]) {
-                if ([urlString containsString:@"video"]) {
-                    loadingRequest.contentInformationRequest.contentType = @"video/mp4";
-                } else if ([urlString containsString:@"audio"]) {
-                    loadingRequest.contentInformationRequest.contentType = @"audio/mp4";
-                }
-            }
-            
-            loadingRequest.contentInformationRequest.byteRangeAccessSupported = YES;
+        // Decrypt both master and variant playlist
+        NSData *encryptedData = [NSData dataWithContentsOfURL:actualUrl];
+        if (!encryptedData) {
+            NSLog(@"_______====== Failed to download encrypted data");
+            [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Failed to download encrypted data"}]];
+            return NO;
         }
         
-        [loadingRequest.dataRequest respondWithData:decryptedData];
-        [loadingRequest finishLoading];
+        NSData *iv = [[EncryptedVideoManager sharedInstance] getVideoIvKey:videoId];
         
-        NSLog(@"_______====== Data decrypted and sent to player");
+        NSData *decryptedData = [self decryptData:encryptedData withKey:key withIv:iv];
+        if (!decryptedData) {
+            NSLog(@"_______====== Data decryption failed");
+            NSError *decryptError = [NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Decryption failed"}];
+            [loadingRequest finishLoadingWithError:decryptError];
+            return NO;
+        }
+        
+        NSMutableString *masterFile = [[NSMutableString alloc] initWithData:decryptedData encoding:NSUTF8StringEncoding];
+        
+        if (isMasterPlaylistFileRequest) {
+            NSLog(@"______________ Is Playlist. Replacing IV");
+            
+            // Replace IV for playlist file only
+            const unsigned char *ivBytes = (const unsigned char *)[iv bytes];
+            NSMutableString *ivHex = [NSMutableString stringWithString:@"0x"];
+            for (int i = 0; i < iv.length; i++) {
+                [ivHex appendFormat:@"%02x", ivBytes[i]];
+            }
+            
+            NSLog(@"IV for videoId %@: %@", videoId, ivHex);
+            
+            NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"IV=0x[0-9a-fA-F]{32}" options:0 error:nil];
+            NSString *updatedPlaylist = [regex stringByReplacingMatchesInString:masterFile options:0 range:NSMakeRange(0, masterFile.length) withTemplate:[NSString stringWithFormat:@"IV=%@", ivHex]];
+            masterFile = [updatedPlaylist mutableCopy];
+        }
+        
+        NSData *finalData = [masterFile dataUsingEncoding:NSUTF8StringEncoding];
+        [loadingRequest.dataRequest respondWithData:finalData];
+        [loadingRequest finishLoading];
         return YES;
-    } else {
-        NSLog(@"_______====== Data decryption failed");
-        NSError *decryptError = [NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Decryption failed"}];
-        [loadingRequest finishLoadingWithError:decryptError];
-        return NO;
     }
+    
+    return NO;
 }
 
-- (NSData *)decryptData:(NSData *)encryptedData withKey:(NSData *)key {
-    // Extract the IV from the encrypted data (assuming the first 16 bytes are the IV)
-    if (encryptedData.length < 16) {
-        NSLog(@"[Decryption] Encrypted data too short");
-        return nil;
-    }
-    
-    NSData *iv = [encryptedData subdataWithRange:NSMakeRange(0, 16)];
-    NSData *ciphertext = [encryptedData subdataWithRange:NSMakeRange(16, encryptedData.length - 16)];
-    
+- (NSData *)decryptData:(NSData *)encryptedData withKey:(NSData *)key withIv:(NSData *)iv {
     // Prepare output buffer
     size_t outLength;
-    NSMutableData *decryptedData = [NSMutableData dataWithLength:ciphertext.length + kCCBlockSizeAES128];
+    NSMutableData *decryptedData = [NSMutableData dataWithLength:encryptedData.length + kCCBlockSizeAES128];
     
     // Perform AES decryption
     CCCryptorStatus status = CCCrypt(kCCDecrypt,
@@ -147,8 +121,8 @@
                                      key.bytes,
                                      kCCKeySizeAES128,
                                      iv.bytes,
-                                     ciphertext.bytes,
-                                     ciphertext.length,
+                                     encryptedData.bytes,
+                                     encryptedData.length,
                                      decryptedData.mutableBytes,
                                      decryptedData.length,
                                      &outLength);
