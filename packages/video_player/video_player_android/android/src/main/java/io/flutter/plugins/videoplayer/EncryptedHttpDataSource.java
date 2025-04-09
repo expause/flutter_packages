@@ -52,11 +52,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
-
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -95,12 +92,14 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
         private boolean keepPostFor302Redirects;
         @Nullable
         byte[] secretKey;
+        byte[] iv;
 
         /**
          * Creates an instance.
          */
-        public Factory(@Nullable byte[] secretKey) {
+        public Factory(@Nullable byte[] secretKey, @Nullable byte[] iv) {
             this.secretKey = secretKey;
+            this.iv = iv;
             defaultRequestProperties = new RequestProperties();
             connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MILLIS;
             readTimeoutMs = DEFAULT_READ_TIMEOUT_MILLIS;
@@ -245,6 +244,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             io.flutter.plugins.videoplayer.EncryptedHttpDataSource dataSource =
                     new io.flutter.plugins.videoplayer.EncryptedHttpDataSource(
                             secretKey,
+                            iv,
                             userAgent,
                             connectTimeoutMs,
                             readTimeoutMs,
@@ -305,9 +305,11 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
     private EncryptedAesFlushingCipher cipher;
     @Nullable
     byte[] secretKey;
+    byte[] iv;
 
     private EncryptedHttpDataSource(
             @Nullable byte[] secretKey,
+            @Nullable byte[] iv,
             @Nullable String userAgent,
             int connectTimeoutMillis,
             int readTimeoutMillis,
@@ -318,6 +320,7 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
             boolean keepPostFor302Redirects) {
         super(/* isNetwork= */ true);
         this.secretKey = secretKey;
+        this.iv = iv;
         this.userAgent = userAgent;
         this.connectTimeoutMillis = connectTimeoutMillis;
         this.readTimeoutMillis = readTimeoutMillis;
@@ -483,13 +486,6 @@ public class EncryptedHttpDataSource extends BaseDataSource implements HttpDataS
 
             // Decrypt the stream before returning
             if (secretKey != null) {
-                // Create the IV from the first 16 bytes of the input stream
-                byte[] iv = new byte[16];
-                bytesRead = inputStream.read(iv);
-                if (bytesRead != 16) {
-                    throw new IOException("Failed to read IV from the stream.");
-                }
-
                 // Initialize the Cipher for decryption
                 Cipher cipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
                 SecretKeySpec keySpec = new SecretKeySpec(secretKey, "AES");

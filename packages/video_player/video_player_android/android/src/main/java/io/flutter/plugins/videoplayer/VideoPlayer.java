@@ -127,6 +127,7 @@ public abstract class VideoPlayer {
 
             String videoId = EncryptedVideoManager.getInstance().extractVideoId(uri.toString());
             EncryptedVideoManager.getInstance().removeVideEncryptedKey(videoId);
+            EncryptedVideoManager.getInstance().removeVideIvKey(videoId);
         }
 
         exoPlayer.release();

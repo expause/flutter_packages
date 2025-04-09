@@ -10,6 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class EncryptedVideoManager {
     private static final Map<String, String> videoSessionCookies = Collections.synchronizedMap(new HashMap<>());
     private static final Map<String, byte[]> videoEncryptionKeys = Collections.synchronizedMap(new HashMap<>());
+    private static final Map<String, byte[]> videoIvKeys = Collections.synchronizedMap(new HashMap<>());
     private static final ReentrantLock sessionLock = new ReentrantLock();
 
     // Singleton instance
@@ -98,6 +99,43 @@ public class EncryptedVideoManager {
             sessionLock.lock();
             try {
                 videoEncryptionKeys.remove(videoId);
+            } finally {
+                sessionLock.unlock();
+            }
+        }
+    }
+
+    public @Nullable byte[] getVideIvKey(String videoId) {
+        @Nullable byte[] key = null;
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                key = videoIvKeys.get(videoId);
+            } finally {
+                sessionLock.unlock();
+            }
+        }
+        return key;
+    }
+
+    public void setVideIvKey(String videoId, byte[] iv) {
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                videoIvKeys.put(videoId, iv);
+            } finally {
+                sessionLock.unlock();
+            }
+        }
+
+    }
+
+    public void removeVideIvKey(String url) {
+        String videoId = extractVideoId(url);
+        if (videoId != null) {
+            sessionLock.lock();
+            try {
+                videoIvKeys.remove(videoId);
             } finally {
                 sessionLock.unlock();
             }
