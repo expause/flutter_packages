@@ -5,7 +5,6 @@
 package io.flutter.plugins.videoplayer;
 
 import android.content.Context;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
@@ -17,7 +16,6 @@ import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-
 import java.util.Map;
 
 final class HttpVideoAsset extends VideoAsset {
@@ -64,10 +62,12 @@ final class HttpVideoAsset extends VideoAsset {
     @NonNull
     @Override
     public MediaSource.Factory getMediaSourceFactory(@NonNull Context context) {
-        String videoId = EncryptedVideoManager.getInstance().extractVideoId(assetUrl);
-        @Nullable byte[] key = EncryptedVideoManager.getInstance().getVideEncryptedKey(videoId);
-        @Nullable byte[] iv = EncryptedVideoManager.getInstance().getVideIvKey(videoId);
-        return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(key, iv));
+        var encryptedVideoManager = EncryptedVideoManager.getInstance();
+        String videoId = encryptedVideoManager.extractVideoId(assetUrl);
+        MediaDecryptionKeys mediaDecryption = encryptedVideoManager.getDecryptionKeys(videoId);
+        var dk = mediaDecryption != null ? mediaDecryption.dk : null;
+        var iv = mediaDecryption != null ? mediaDecryption.iv : null;
+        return getMediaSourceFactory(context, new EncryptedHttpDataSource.Factory(dk, iv));
     }
 
     /**

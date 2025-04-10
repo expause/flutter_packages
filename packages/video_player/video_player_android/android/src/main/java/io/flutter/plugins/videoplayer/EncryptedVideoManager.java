@@ -1,17 +1,25 @@
 package io.flutter.plugins.videoplayer;
 
+import android.util.Log;
+
 import androidx.annotation.Nullable;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
 public class EncryptedVideoManager {
     private static final Map<String, String> videoSessionCookies = Collections.synchronizedMap(new HashMap<>());
-    private static final Map<String, byte[]> videoEncryptionKeys = Collections.synchronizedMap(new HashMap<>());
-    private static final Map<String, byte[]> videoIvKeys = Collections.synchronizedMap(new HashMap<>());
-    private static final ReentrantLock sessionLock = new ReentrantLock();
+    private static final Map<String, MediaDecryption> videoDecryptions = Collections.synchronizedMap(new HashMap<>());
+    private static final ReentrantLock syncLock = new ReentrantLock();
 
     // Singleton instance
     private static final EncryptedVideoManager INSTANCE = new EncryptedVideoManager();
@@ -29,14 +37,14 @@ public class EncryptedVideoManager {
         Map<String, String> headers = new HashMap<>();
         String videoId = extractVideoId(url);
         if (videoId != null) {
-            sessionLock.lock();
+            syncLock.lock();
             try {
                 String sessionCookie = videoSessionCookies.get(videoId);
                 if (sessionCookie != null) {
                     headers.put("set-cookie", sessionCookie);
                 }
             } finally {
-                sessionLock.unlock();
+                syncLock.unlock();
             }
         }
         return headers;
@@ -46,11 +54,11 @@ public class EncryptedVideoManager {
         if ("set-cookie".equalsIgnoreCase(cookieName)) {
             String videoId = extractVideoId(url);
             if (videoId != null) {
-                sessionLock.lock();
+                syncLock.lock();
                 try {
                     videoSessionCookies.put(videoId, cookieValue);
                 } finally {
-                    sessionLock.unlock();
+                    syncLock.unlock();
                 }
             }
         }
@@ -59,87 +67,108 @@ public class EncryptedVideoManager {
     public void clearRequestCookies(String url) {
         String videoId = extractVideoId(url);
         if (videoId != null) {
-            sessionLock.lock();
+            syncLock.lock();
             try {
                 videoSessionCookies.remove(videoId);
             } finally {
-                sessionLock.unlock();
-            }
-        }
-    }
-    
-    public @Nullable byte[] getVideEncryptedKey(String videoId) {
-        @Nullable byte[] key = null;
-        if (videoId != null) {
-            sessionLock.lock();
-            try {
-                key = videoEncryptionKeys.get(videoId);
-            } finally {
-                sessionLock.unlock();
-            }
-        }
-        return key;
-    }
-
-    public void setVideEncryptedKey(String videoId, byte[] key) {
-        if (videoId != null) {
-            sessionLock.lock();
-            try {
-                videoEncryptionKeys.put(videoId, key);
-            } finally {
-                sessionLock.unlock();
-            }
-        }
-
-    }
-
-    public void removeVideEncryptedKey(String url) {
-        String videoId = extractVideoId(url);
-        if (videoId != null) {
-            sessionLock.lock();
-            try {
-                videoEncryptionKeys.remove(videoId);
-            } finally {
-                sessionLock.unlock();
+                syncLock.unlock();
             }
         }
     }
 
-    public @Nullable byte[] getVideIvKey(String videoId) {
-        @Nullable byte[] key = null;
-        if (videoId != null) {
-            sessionLock.lock();
+    public void setDecryption(String videoId, MediaDecryption data) {
+        if (videoId != null && data != null) {
+            syncLock.lock();
             try {
-                key = videoIvKeys.get(videoId);
+                videoDecryptions.put(videoId, data);
             } finally {
-                sessionLock.unlock();
+                syncLock.unlock();
             }
         }
-        return key;
     }
 
-    public void setVideIvKey(String videoId, byte[] iv) {
+    @Nullable
+    private MediaDecryption getDecryption(String videoId) {
         if (videoId != null) {
-            sessionLock.lock();
+            syncLock.lock();
             try {
-                videoIvKeys.put(videoId, iv);
+                return videoDecryptions.get(videoId);
             } finally {
-                sessionLock.unlock();
+                syncLock.unlock();
             }
         }
-
+        return null;
     }
 
-    public void removeVideIvKey(String url) {
-        String videoId = extractVideoId(url);
+    @Nullable
+    public MediaDecryptionKeys getDecryptionKeys(String videoId) {
+        MediaDecryption encrypted = getDecryption(videoId);
+        if (encrypted == null) return null;
+
+        try {
+            // 🔐 Derive session key from uid and iat
+            String sessionKeyMaterial = encrypted.uid + "-" + encrypted.iat;
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] fullKey = digest.digest(sessionKeyMaterial.getBytes(StandardCharsets.UTF_8));
+            byte[] sessionKey = Arrays.copyOfRange(fullKey, 0, 16); // AES-128
+
+            // AES decrypt DK
+            byte[] decryptedDk = decryptAes128CBC(encrypted.dk, sessionKey, encrypted.dkAesIv);
+            // AES decrypt IV
+            byte[] decryptedIv = decryptAes128CBC(encrypted.iv, sessionKey, encrypted.ivAesIv);
+
+            // Unshift the bytes
+            var encryptionKeyPrefix = "expause-video-key-";
+            var encryptionSecretName = encryptionKeyPrefix + videoId;
+            var ivKeyPrefix = "expause-iv-key-";
+            var ivSecretName = ivKeyPrefix + videoId;
+
+//            Log.d("______ Android", "DK secretName: " + encryptionSecretName);
+//            Log.d("______ Android", "IV secretName: " + ivSecretName);
+//            Log.d("______ Android", "Decrypted DK before unshift: " + Arrays.toString(decryptedDk));
+//            Log.d("______ Android", "Decrypted IV before unshift: " + Arrays.toString(decryptedIv));
+
+            decryptedDk = unshiftKeyBytes(decryptedDk, encryptionSecretName);
+            decryptedIv = unshiftKeyBytes(decryptedIv, ivSecretName);
+//            Log.d("______ Android", "Decrypted DK after unshift: " + Arrays.toString(decryptedDk));
+//            Log.d("______ Android", "Decrypted IV after unshift: " + Arrays.toString(decryptedIv));
+
+            return new MediaDecryptionKeys(decryptedDk, decryptedIv);
+        } catch (Exception e) {
+            Log.e("EncryptedVideoManager", "Decryption error: " + e.getMessage(), e);
+            return null;
+        }
+    }
+
+    public void removeDecryption(String videoId) {
         if (videoId != null) {
-            sessionLock.lock();
+            syncLock.lock();
             try {
-                videoIvKeys.remove(videoId);
+                videoDecryptions.remove(videoId);
             } finally {
-                sessionLock.unlock();
+                syncLock.unlock();
             }
         }
+    }
+
+    private byte[] decryptAes128CBC(byte[] encryptedData, byte[] key, byte[] iv) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
+        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+        return cipher.doFinal(encryptedData);
+    }
+
+    private byte[] unshiftKeyBytes(byte[] shiftedKey, String secretName) throws Exception {
+        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+        byte[] hash = sha256.digest(secretName.getBytes(StandardCharsets.UTF_8));
+        byte[] result = new byte[shiftedKey.length];
+
+        for (int i = 0; i < shiftedKey.length; i++) {
+            result[i] = (byte)(shiftedKey[i] ^ hash[i % hash.length]);
+        }
+
+        return result;
     }
 
     @Nullable

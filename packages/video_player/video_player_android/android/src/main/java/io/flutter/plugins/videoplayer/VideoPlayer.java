@@ -123,11 +123,10 @@ public abstract class VideoPlayer {
     public void dispose() {
         if (mediaItem.localConfiguration != null) {
             var uri = mediaItem.localConfiguration.uri;
-            EncryptedVideoManager.getInstance().clearRequestCookies(uri.toString());
-
-            String videoId = EncryptedVideoManager.getInstance().extractVideoId(uri.toString());
-            EncryptedVideoManager.getInstance().removeVideEncryptedKey(videoId);
-            EncryptedVideoManager.getInstance().removeVideIvKey(videoId);
+            var encryptedVideoManager = EncryptedVideoManager.getInstance();
+            encryptedVideoManager.clearRequestCookies(uri.toString());
+            String videoId = encryptedVideoManager.extractVideoId(uri.toString());
+            encryptedVideoManager.removeDecryption(videoId);
         }
 
         exoPlayer.release();
