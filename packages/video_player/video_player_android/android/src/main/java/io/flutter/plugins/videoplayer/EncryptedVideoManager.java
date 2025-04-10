@@ -112,6 +112,10 @@ public class EncryptedVideoManager {
             byte[] fullKey = digest.digest(sessionKeyMaterial.getBytes(StandardCharsets.UTF_8));
             byte[] sessionKey = Arrays.copyOfRange(fullKey, 0, 16); // AES-128
 
+//            Log.d("______ Android", "______ Android sessionKey: " + Arrays.toString(sessionKey));
+//            Log.d("______ Android", "______ Android Encrypted DK: " + Arrays.toString(encrypted.dk));
+//            Log.d("______ Android", "______ Android Encrypted IV: " + Arrays.toString(encrypted.iv));
+
             // AES decrypt DK
             byte[] decryptedDk = decryptAes128CBC(encrypted.dk, sessionKey, encrypted.dkAesIv);
             // AES decrypt IV
@@ -123,15 +127,15 @@ public class EncryptedVideoManager {
             var ivKeyPrefix = "expause-iv-key-";
             var ivSecretName = ivKeyPrefix + videoId;
 
-//            Log.d("______ Android", "DK secretName: " + encryptionSecretName);
-//            Log.d("______ Android", "IV secretName: " + ivSecretName);
-//            Log.d("______ Android", "Decrypted DK before unshift: " + Arrays.toString(decryptedDk));
-//            Log.d("______ Android", "Decrypted IV before unshift: " + Arrays.toString(decryptedIv));
+//            Log.d("______ Android", "______ Android DK secretName: " + encryptionSecretName);
+//            Log.d("______ Android", "______ Android IV secretName: " + ivSecretName);
+//            Log.d("______ Android", "______ Android Decrypted DK before unshift: " + Arrays.toString(decryptedDk));
+//            Log.d("______ Android", "______ Android Decrypted IV before unshift: " + Arrays.toString(decryptedIv));
 
             decryptedDk = unshiftKeyBytes(decryptedDk, encryptionSecretName);
             decryptedIv = unshiftKeyBytes(decryptedIv, ivSecretName);
-//            Log.d("______ Android", "Decrypted DK after unshift: " + Arrays.toString(decryptedDk));
-//            Log.d("______ Android", "Decrypted IV after unshift: " + Arrays.toString(decryptedIv));
+//            Log.d("______ Android", "______ Android Decrypted DK after unshift: " + Arrays.toString(decryptedDk));
+//            Log.d("______ Android", "______ Android Decrypted IV after unshift: " + Arrays.toString(decryptedIv));
 
             return new MediaDecryptionKeys(decryptedDk, decryptedIv);
         } catch (Exception e) {

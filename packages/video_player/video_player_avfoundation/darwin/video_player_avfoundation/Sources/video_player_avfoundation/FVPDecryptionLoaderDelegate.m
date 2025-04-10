@@ -27,7 +27,6 @@
     
     if (isSegmentRequest) {
 //        NSLog(@"______________ Requested video segment. Returning NO");
-        
         NSURLRequest *redirect = [NSURLRequest requestWithURL:actualUrl];
         loadingRequest.redirect = redirect;
         [loadingRequest finishLoading];
@@ -43,7 +42,8 @@
         return NO;
     }
     
-    NSData *key = [[EncryptedVideoManager sharedInstance] getVideoDecryptionKey:videoId];
+    MediaDecryptionKeys *decryptionKeys = [[EncryptedVideoManager sharedInstance] getDecryptionKeys:videoId];
+    NSData *key = decryptionKeys.decryptedKey;
     
     if (!key) {
         [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Decryption key not found"}]];
@@ -61,8 +61,7 @@
     }
     
     if (isMasterFileRequest) {
-//        NSLog(@"______________ Requested master file");
-        
+//        NSLog(@"______________ Requested master file");        
         NSURLSession *session = [NSURLSession sharedSession];
         NSURLSessionDataTask *task = [session dataTaskWithURL:actualUrl completionHandler:^(NSData * _Nullable encryptedData, NSURLResponse * _Nullable response, NSError * _Nullable error) {
             if (!encryptedData || error) {
@@ -70,8 +69,8 @@
                 [loadingRequest finishLoadingWithError:error ?: [NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Failed to download encrypted data"}]];
                 return;
             }
-            
-            NSData *iv = [[EncryptedVideoManager sharedInstance] getVideoIvKey:videoId];
+                        
+            NSData *iv = decryptionKeys.decryptedIv;
             NSData *decryptedData = [self decryptData:encryptedData withKey:key withIv:iv];
             if (!decryptedData) {
                 NSLog(@"_______====== Data decryption failed");
