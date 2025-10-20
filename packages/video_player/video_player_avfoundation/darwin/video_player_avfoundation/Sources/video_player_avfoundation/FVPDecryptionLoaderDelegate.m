@@ -8,7 +8,7 @@
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest {
     NSURL *customURL = loadingRequest.request.URL;
-    NSLog(@"================================ Requested URL: %@", customURL.absoluteString);
+//    NSLog(@"================================ Requested URL: %@", customURL.absoluteString);
     
     // Modify the URL scheme back to https
     NSURLComponents *components = [NSURLComponents componentsWithURL:customURL resolvingAgainstBaseURL:NO];
@@ -26,11 +26,8 @@
                                        ![actualUrl.absoluteURL.absoluteString containsString:@"master_light.m3u8"];
     bool isSegmentRequest = !isKeyDecryptionRequest && !isMasterFileRequest;
     
-//    NSString *confirmMasterPlaylist = isMasterPlaylistFileRequest ? (NSString *) "Yes" : (NSString *) "No";
-//    NSLog(@"______________ isMasterPlaylistFileRequest: %@", confirmMasterPlaylist);
-    
     if (isSegmentRequest) {
-        NSLog(@"================================ Requested video segment. Returning NO");
+//        NSLog(@"================================ Requested video segment. Returning NO");
         NSURLRequest *redirect = [NSURLRequest requestWithURL:actualUrl];
         loadingRequest.redirect = redirect;
         [loadingRequest finishLoading];
@@ -42,6 +39,7 @@
     [[EncryptedVideoManager sharedInstance] extractVideoIdFromURL:actualUrl.absoluteString];
     
     if (!videoId) {
+        NSLog(@"================================ Video id not found in the URL");
         [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Invalid Video ID"}]];
         return NO;
     }
@@ -50,12 +48,13 @@
     NSData *key = decryptionKeys.decryptedKey;
     
     if (!key) {
+        NSLog(@"================================ Decryption key not found");
         [loadingRequest finishLoadingWithError:[NSError errorWithDomain:@"com.yourapp.video" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"Decryption key not found"}]];
         return NO;
     }
     
     if (isKeyDecryptionRequest) {
-        NSLog(@"================================ Requested hls key");
+//        NSLog(@"================================ Requested hls key");
         loadingRequest.contentInformationRequest.contentType = AVStreamingKeyDeliveryPersistentContentKeyType;
         loadingRequest.contentInformationRequest.byteRangeAccessSupported = YES;
         loadingRequest.contentInformationRequest.contentLength = key.length;
@@ -65,7 +64,7 @@
     }
     
     if (isMasterFileRequest) {
-        NSLog(@"================================ Requested master file");
+//        NSLog(@"================================ Requested master file");
         NSURLSession *session = [NSURLSession sharedSession];
         NSURLSessionDataTask *task = [session dataTaskWithURL:actualUrl completionHandler:^(NSData * _Nullable encryptedData, NSURLResponse * _Nullable response, NSError * _Nullable error) {
             if (!encryptedData || error) {
@@ -74,7 +73,7 @@
                 return;
             }
             
-            NSLog(@"================================ Downloaded encrypted data");
+//            NSLog(@"================================ Downloaded encrypted data");
                         
             NSData *iv = decryptionKeys.decryptedIv;
             NSData *decryptedData = [self decryptData:encryptedData withKey:key withIv:iv];
@@ -85,16 +84,16 @@
                 return;
             }
             
-            NSLog(@"================================ Data decrypted");
+//            NSLog(@"================================ Data decrypted");
             
             NSMutableString *masterFile = [[NSMutableString alloc] initWithData:decryptedData encoding:NSUTF8StringEncoding];
             
-            NSLog(@"================================ initiated master file");
+//            NSLog(@"================================ initiated master file");
             
-            NSLog(@"================================ Master file content: %@", masterFile);
+//            NSLog(@"================================ Master file content: %@", masterFile);
             
             if (isMasterPlaylistFileRequest) {
-                NSLog(@"================================ Is Playlist. Replacing IV");
+//                NSLog(@"================================ Is Playlist. Replacing IV");
                 
                 const unsigned char *ivBytes = (const unsigned char *)[iv bytes];
                 NSMutableString *ivHex = [NSMutableString stringWithString:@"0x"];
@@ -107,11 +106,11 @@
                 masterFile = [updatedPlaylist mutableCopy];
             }
             
-            NSLog(@"================================ Master is not playlist");
+//            NSLog(@"================================ Master is not playlist");
             
             NSData *finalData = [masterFile dataUsingEncoding:NSUTF8StringEncoding];
             
-            NSLog(@"================================ Resolved master file");
+//            NSLog(@"================================ Resolved master file");
             
             [loadingRequest.dataRequest respondWithData:finalData];
             [loadingRequest finishLoading];
@@ -146,7 +145,7 @@
         decryptedData.length = outLength; // Resize to actual decrypted length
         return decryptedData;
     } else {
-        NSLog(@"[Decryption] AES decryption failed with status: %d", status);
+        NSLog(@"================================ [Decryption] AES decryption failed with status: %d", status);
         return nil;
     }
 }
